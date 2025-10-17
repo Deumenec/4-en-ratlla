@@ -6,7 +6,7 @@
 //
 
 #include <stdio.h>
-
+/*
 Node* CreateNodeDetallat(char** tauler, int numDeFills, int nivell){
     Node* newNode = malloc(sizeof(Node));
     newNode->tauler=tauler;
@@ -25,3 +25,4 @@ void exampleNodeTree (char** partida){
     exemple->fills[0]->fills[0]=CreateNodeDetallat(partida, 0, 3);
     printNodeTree(exemple);
 }
+*/
