@@ -178,7 +178,7 @@ int winCondition(char jugador, char **tauler, char columna){
     }
     return 0;
 }
-int tornJugador(char jugador, char ***tauler, int *torn){
+int tornJugador(char jugador, char ***tauler, int *torn, char mode){
     //Incorpora tots els pasos del torn d'un jugador
     //comença esborrant la jugada anterior si es pertinent
     int i =0;
@@ -198,7 +198,7 @@ int tornJugador(char jugador, char ***tauler, int *torn){
             printf("Aquesta jugada no és vàlida, quina vols fer?");
         }
     }
-    deleteLines(N+3+i); //Elimina el text del torn anterior
+    if (mode ==1) deleteLines(N+3+i); //Elimina el text del torn anterior
     fflush(stdout);
     char **nouTauler = tirada(jugador, *tauler, columna_triada-1); // A la columna triada li restem 1 per tenir bé la numeració
     freeTauler(*tauler);
@@ -232,7 +232,7 @@ void buildTree (Node* arrel, int profunditat, char jugador, char enemic){
             (arrel->fills)[aux]= CreateNode(tirada(jugador, arrel->tauler, columna), arrel->nivell+1, columna); //Afegeix el node com a fill
             //Comprova si la partida s'acaba directament en aquest torn i en tal cas assigna la qualitat o amplia l'arbre.
             if (winCondition(jugador, (arrel->fills)[aux]->tauler, (arrel->fills)[aux]->last_move)== 1 ){
-                (arrel->fills)[aux]->qualitat = (float) '1'-jugador-0.5;
+                (arrel->fills)[aux]->qualitat = (float) ('1'-jugador+0.5)*2;
                 (arrel->fills)[aux++]->n_fills =0; //La arrel aquesta ja no té fills pq la partida no segueix x aquí!!!!!
             }
             else buildTree((arrel->fills)[aux++], profunditat-1, enemic, jugador); //Fixar-se que en un dels dos casos ha d'acabar sumant 1 a aux, pel que ens va explicar el Vicens l'altre dia això es pot posar als arguments del for.
@@ -241,14 +241,23 @@ void buildTree (Node* arrel, int profunditat, char jugador, char enemic){
     return;
 }
 
-void HumaVsHuma(char**partida){
+void destroyTree(Node* arrel){
+    freeTauler(arrel->tauler);
+    for (int i=0; i< arrel->n_fills; i++){
+        destroyTree((arrel->fills)[i]);
+    }
+    if (arrel->n_fills!=0) free(arrel->fills); //Important alliberar aquest array d'apuntadors cap a els fills a part
+    free(arrel);
+}
+
+void HumaVsHuma(char**partida, char mode){
     int torn = 0;
     while(1){
-        if (tornJugador('1', &partida, &torn)==1){
+        if (tornJugador('1', &partida, &torn, mode)==1){
             printf("Felicitats jugador 1, has guanyat!\n");
             break;
         }
-        if (tornJugador('2', &partida, &torn)==1){
+        if (tornJugador('2', &partida, &torn, mode)==1){
             printf("Felicitats jugador 2, has guanyat!\n");
             break;
         }
@@ -259,46 +268,93 @@ void HumaVsHuma(char**partida){
     }
     return;
 }
-int minMax(Node pare,char maquina){
-    return 2;
+
+float MaxQuali(Node arrel){
+    float quali =-1.;
+    for(int i=0; i< arrel.n_fills; i++){
+        if (arrel.fills[i]->qualitat >quali) quali =arrel.fills[i]->qualitat;
+    }
+    return quali;
+}
+float MinQuali(Node arrel){
+    float quali =1;
+    for(int i=0; i< arrel.n_fills; i++){
+        if (arrel.fills[i]->qualitat <quali) quali =arrel.fills[i]->qualitat;
+    }
+    return quali;
+}
+int nephewsNum(Node pare){
+    int nephews =0;
+    for (int i=0;i<pare.n_fills; i++ ){
+        nephews += pare.fills[i]->n_fills;
+    }
+    return nephews;
+}
+void minMax(Node *pare,char maquina, int profunditat){
+    //Comprova si el pare té nets per si està ben completat el minMax, si té nets fa el minMax dels fills i així iterativament
+    if (nephewsNum(*pare)!=0){
+        for (int i=0; i<pare->n_fills; i++){
+            minMax(pare->fills[i], maquina, profunditat-1);
+        }
+    }
+    if (profunditat%2==0) pare->qualitat =MaxQuali(*pare);
+    if (profunditat%2==1) pare->qualitat =MinQuali(*pare);
+    return;
 }
 void evaluateTree (Node* arrel, int profunditat, char jugador, char enemic){
-//Evalua la qualitat de tots els nodes de l'arbre assignant 1 si es guanya la partida i -1 si es perd la partida.
+//Evalua la qualitat de tots els nodes de l'arbre assignant 1 si es guanya la partida i -1 si es perd la partida. I altres mètodes heurístics que he de decidir de moment no fa res.
     for(int i=0; i<arrel->n_fills; i++){
         evaluateTree((arrel->fills)[i], profunditat-1, jugador, enemic);
     }
     return;
 }
-int tornMaquina(char maquina, char enemic, char ***tauler, int *torn, int profunditat){
+int triaJugada(Node arrel){
+    //Amb la quali del pare, tria quina és la jugada que ha de fer la màquina, si n'hi ha d'empatades en tria una d'aleatoria
+    int repeticions=0;
+    for(int i=0; i<arrel.n_fills; i++){
+        if(arrel.fills[i]->qualitat==arrel.qualitat) repeticions++;
+    }
+    repeticions += -rand()%repeticions;
+    for(int i=0; i<arrel.n_fills; i++){
+        if(arrel.fills[i]->qualitat==arrel.qualitat) repeticions--;
+        if (repeticions==0) return arrel.fills[i]->last_move;
+    }
+    return -1;
+}
+int tornMaquina(char maquina, char enemic, char ***tauler, int *torn, int profunditat, char mode){
     //Decideix quina jugada fa la màquina i la fa, comença construint l'arbre de jugades. Aquí el jugador és l'enemic!
     Node *pare = CreateNode(*tauler, 0, -1);
     buildTree(pare, profunditat, maquina, enemic);
     //printNodeTree(pare);
     //Evaluate l'Arbre donant-li els valors que sigui als nodes de qualitat
-    evaluateTree(pare, profunditat, maquina, enemic);
+    //Evaluationniidnvvkrjn fer per millorar el programa ja que només està posat el hard-choice!!
     //Utilitza l'algorisme del MinMax per veure quin punt és el millor
-    int jugadaOptima = minMax(*pare, maquina);
+    //printNodeTree(pare);
+    minMax(pare, maquina, profunditat);
+    //printNodeTree(pare);
+    //Si hi ha jugades empatades en puntuació en tria una d'aleatoria
+    int jugadaOptima = triaJugada(*pare);
     //Actualitza la partida amb la jugada de la màquina
     char ** nouTauler = tirada(maquina, *tauler, jugadaOptima);
-    freeTauler(*tauler);
+    destroyTree(pare);
     *tauler = nouTauler;
     printf("Calculant la jugada de la màquina...");
     fflush(stdout);
     sleep(1);
-    deleteLines(N+2); //Elimina el text del torn anterior, espera una estona i printeja la jugada de la màquina
+    if(mode ==1) deleteLines(N+2); //Elimina el text del torn anterior, espera una estona i printeja la jugada de la màquina
     printTauler(*tauler);
     fflush(stdout);   //Per asegurar que es printeja bé la cosa.
     return winCondition(maquina, *tauler,jugadaOptima); //Comprova si la maquina ha guanyat amb aquesta ronda
 }
 
-void HumaVsMaquina(char**partida, int profunditat){
+void HumaVsMaquina(char**partida, int profunditat, char mode){
     int torn = 0;
     while(1){
-        if (tornJugador('1', &partida, &torn)==1){
+        if (tornJugador('1', &partida, &torn, mode)==1){
             printf("Feliciats, has guanyat!\n");
             break;
         }
-        if (tornMaquina('2','1',&partida, &torn, profunditat)==1){
+        if (tornMaquina('2','1',&partida, &torn, profunditat, mode)==1){
             printf("Brrrr Brrr Brrrr, torna-ho a intentar!\n");
             break;
         }
@@ -311,10 +367,12 @@ void HumaVsMaquina(char**partida, int profunditat){
 }
 int main(void) {
     //inicialització de la partida
+    char modeSilencions = 1;
+    srand( (int) time(NULL));
     char **partida = zerosArray();
-    int profunditat = 4;
+    int profunditat = 6;
     printTauler(partida);
-    //HumaVsHuma(partida);
-    HumaVsMaquina(partida, profunditat);
+    //HumaVsHuma(partida, modeSilencios);
+    HumaVsMaquina(partida, profunditat, modeSilencions);
     return 0;
 }

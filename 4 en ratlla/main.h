@@ -12,4 +12,5 @@
 #include <stdlib.h> //for malloc, free
 #include <unistd.h> //for sleep
 #include <string.h> //for some help with strings
+#include <time.h>
 #endif /* main_h */
